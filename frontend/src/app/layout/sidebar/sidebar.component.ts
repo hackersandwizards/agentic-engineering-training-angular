@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthStore } from '../../core/state/auth.store';
 
@@ -70,7 +70,8 @@ import { AuthStore } from '../../core/state/auth.store';
       background: #3182ce;
       color: white;
     }
-  `]
+  `],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SidebarComponent {
   authStore = inject(AuthStore);

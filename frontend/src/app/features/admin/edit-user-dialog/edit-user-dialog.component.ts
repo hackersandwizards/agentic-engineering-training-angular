@@ -1,4 +1,5 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
   MAT_DIALOG_DATA,
@@ -31,8 +32,8 @@ import { UserService } from '../../../core/services/user.service';
   template: `
     <h2 mat-dialog-title>Edit User</h2>
     <mat-dialog-content>
-      @if (error) {
-        <div class="error-banner">{{ error }}</div>
+      @if (error()) {
+        <div class="error-banner">{{ error() }}</div>
       }
       <form [formGroup]="form" (ngSubmit)="onSubmit()">
         <mat-form-field appearance="outline" class="full-width">
@@ -69,9 +70,9 @@ import { UserService } from '../../../core/services/user.service';
         mat-raised-button
         color="primary"
         (click)="onSubmit()"
-        [disabled]="submitting"
+        [disabled]="submitting()"
       >
-        {{ submitting ? 'Saving...' : 'Save' }}
+        {{ submitting() ? 'Saving...' : 'Save' }}
       </button>
     </mat-dialog-actions>
   `,
@@ -90,21 +91,16 @@ import { UserService } from '../../../core/services/user.service';
         display: flex;
         gap: 16px;
       }
-      .error-banner {
-        background: #fed7d7;
-        color: #c53030;
-        padding: 12px;
-        border-radius: 6px;
-        margin-bottom: 16px;
-      }
     `,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class EditUserDialogComponent {
   readonly dialogRef = inject(MatDialogRef<EditUserDialogComponent>);
   private data: User = inject(MAT_DIALOG_DATA);
   private fb = inject(FormBuilder);
   private userService = inject(UserService);
+  private destroyRef = inject(DestroyRef);
 
   form = this.fb.nonNullable.group({
     email: [this.data.email, [Validators.required, Validators.email]],
@@ -114,31 +110,31 @@ export class EditUserDialogComponent {
     is_active: [this.data.is_active],
   });
 
-  submitting = false;
-  error = '';
+  submitting = signal(false);
+  error = signal('');
 
   onSubmit(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
     }
-    this.submitting = true;
-    this.error = '';
+    this.submitting.set(true);
+    this.error.set('');
     const { email, password, full_name, is_superuser, is_active } = this.form.getRawValue();
-    const payload: Record<string, unknown> = {
+    const payload: { email?: string; password?: string; full_name?: string; is_superuser?: boolean; is_active?: boolean } = {
       email,
-      full_name: full_name || undefined,
+      full_name,
       is_superuser,
       is_active,
     };
     if (password) {
-      payload['password'] = password;
+      payload.password = password;
     }
-    this.userService.updateUser(this.data.id, payload).subscribe({
+    this.userService.updateUser(this.data.id, payload).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (user) => this.dialogRef.close(user),
       error: (err) => {
-        this.error = err.error?.detail || 'Failed to update user';
-        this.submitting = false;
+        this.error.set(err.error?.detail || 'Failed to update user');
+        this.submitting.set(false);
       },
     });
   }

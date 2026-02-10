@@ -1,26 +1,34 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { User } from '../../core/models/user.model';
 import { UserService } from '../../core/services/user.service';
 import { AuthStore } from '../../core/state/auth.store';
+import { createPagination } from '../../core/utils/pagination';
+import { openDialogAndReload } from '../../core/utils/dialog';
 import { AddUserDialogComponent } from './add-user-dialog/add-user-dialog.component';
 import { EditUserDialogComponent } from './edit-user-dialog/edit-user-dialog.component';
 import { DeleteUserDialogComponent } from './delete-user-dialog/delete-user-dialog.component';
 
 @Component({
   selector: 'app-admin',
-  imports: [MatTableModule, MatButtonModule, MatIconModule, MatMenuModule, MatChipsModule],
+  imports: [MatTableModule, MatButtonModule, MatIconModule, MatMenuModule, MatChipsModule, MatProgressBarModule],
   template: `
     <div class="header">
       <h1>User Management</h1>
       <button mat-raised-button color="primary" (click)="openAdd()">Add User</button>
     </div>
+
+    @if (loading()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
 
     <table mat-table [dataSource]="users()" class="full-width">
       <ng-container matColumnDef="name">
@@ -55,7 +63,7 @@ import { DeleteUserDialogComponent } from './delete-user-dialog/delete-user-dial
       <ng-container matColumnDef="actions">
         <th mat-header-cell *matHeaderCellDef>Actions</th>
         <td mat-cell *matCellDef="let u">
-          <button mat-icon-button [matMenuTriggerFor]="menu">
+          <button mat-icon-button [matMenuTriggerFor]="menu" aria-label="User actions">
             <mat-icon>more_vert</mat-icon>
           </button>
           <mat-menu #menu="matMenu">
@@ -75,10 +83,14 @@ import { DeleteUserDialogComponent } from './delete-user-dialog/delete-user-dial
       <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
     </table>
 
+    @if (!loading() && users().length === 0) {
+      <div class="empty-state">No users found.</div>
+    }
+
     <div class="pagination">
-      <button mat-button [disabled]="page() <= 1" (click)="goToPage(page() - 1)">Previous</button>
-      <span>Page {{ page() }} of {{ totalPages() }}</span>
-      <button mat-button [disabled]="page() >= totalPages()" (click)="goToPage(page() + 1)">Next</button>
+      <button mat-button [disabled]="pagination.page() <= 1" (click)="pagination.goToPage(pagination.page() - 1, loadUsers)">Previous</button>
+      <span>Page {{ pagination.page() }} of {{ pagination.totalPages() }}</span>
+      <button mat-button [disabled]="pagination.page() >= pagination.totalPages()" (click)="pagination.goToPage(pagination.page() + 1, loadUsers)">Next</button>
     </div>
   `,
   styles: [`
@@ -90,66 +102,50 @@ import { DeleteUserDialogComponent } from './delete-user-dialog/delete-user-dial
     .admin-chip { background: #3182ce; color: white; }
     .active-chip { background: #38a169; color: white; }
     .inactive-chip { background: #e53e3e; color: white; }
-  `]
+    .empty-state { text-align: center; padding: 48px 16px; color: #718096; font-size: 15px; }
+  `],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AdminComponent implements OnInit {
   private userService = inject(UserService);
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
   authStore = inject(AuthStore);
+  private destroyRef = inject(DestroyRef);
 
   displayedColumns = ['name', 'email', 'role', 'status', 'actions'];
   users = signal<User[]>([]);
-  page = signal(1);
-  totalPages = signal(1);
-  private pageSize = 5;
+  loading = signal(true);
+  pagination = createPagination(5);
 
   ngOnInit(): void {
     this.loadUsers();
   }
 
-  loadUsers(): void {
-    const skip = (this.page() - 1) * this.pageSize;
-    this.userService.getUsers(skip, this.pageSize).subscribe({
+  loadUsers = (): void => {
+    this.loading.set(true);
+    this.userService.getUsers(this.pagination.skip(), this.pagination.pageSize).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: res => {
         this.users.set(res.data);
-        this.totalPages.set(Math.max(1, Math.ceil(res.count / this.pageSize)));
+        this.pagination.updateFromResponse(res.count);
+        this.loading.set(false);
+      },
+      error: () => {
+        this.snackBar.open('Failed to load users', 'Close', { duration: 3000 });
+        this.loading.set(false);
       }
     });
-  }
-
-  goToPage(p: number): void {
-    this.page.set(p);
-    this.loadUsers();
-  }
+  };
 
   openAdd(): void {
-    const ref = this.dialog.open(AddUserDialogComponent, { width: '500px' });
-    ref.afterClosed().subscribe(result => {
-      if (result) {
-        this.snackBar.open('User created', 'Close', { duration: 3000 });
-        this.loadUsers();
-      }
-    });
+    openDialogAndReload(this.dialog, this.snackBar, this.destroyRef, AddUserDialogComponent, { width: '500px' }, 'User created', this.loadUsers);
   }
 
   openEdit(user: User): void {
-    const ref = this.dialog.open(EditUserDialogComponent, { width: '500px', data: user });
-    ref.afterClosed().subscribe(result => {
-      if (result) {
-        this.snackBar.open('User updated', 'Close', { duration: 3000 });
-        this.loadUsers();
-      }
-    });
+    openDialogAndReload(this.dialog, this.snackBar, this.destroyRef, EditUserDialogComponent, { width: '500px', data: user }, 'User updated', this.loadUsers);
   }
 
   openDelete(user: User): void {
-    const ref = this.dialog.open(DeleteUserDialogComponent, { width: '400px', data: user });
-    ref.afterClosed().subscribe(result => {
-      if (result) {
-        this.snackBar.open('User deleted', 'Close', { duration: 3000 });
-        this.loadUsers();
-      }
-    });
+    openDialogAndReload(this.dialog, this.snackBar, this.destroyRef, DeleteUserDialogComponent, { width: '400px', data: user }, 'User deleted', this.loadUsers);
   }
 }

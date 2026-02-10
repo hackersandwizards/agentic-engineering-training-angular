@@ -35,4 +35,22 @@ body {
   margin: 0;
   height: 100%;
 }
-/* You can add global styles to this file, and also import other style files */
+mat-form-field {
+  margin-bottom: 16px;
+}
+
+mat-dialog-content {
+  overflow: visible !important;
+}
+
+mat-card-header {
+  margin-bottom: 16px;
+}
+
+.error-banner {
+  background: #fed7d7;
+  color: #c53030;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}

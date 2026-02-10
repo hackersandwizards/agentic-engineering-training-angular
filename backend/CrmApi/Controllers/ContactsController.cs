@@ -9,14 +9,9 @@ namespace CrmApi.Controllers;
 [ApiController]
 [Route("api/v1/contacts")]
 [Authorize]
-public class ContactsController : ControllerBase
+public class ContactsController : BaseApiController
 {
-    private readonly AppDbContext _db;
-
-    public ContactsController(AppDbContext db)
-    {
-        _db = db;
-    }
+    public ContactsController(AppDbContext db) : base(db) {}
 
     [HttpGet]
     public async Task<IActionResult> Index([FromQuery] int skip = 0, [FromQuery] int limit = 100)
@@ -25,23 +20,18 @@ public class ContactsController : ControllerBase
         var user = await GetCurrentUser();
         if (user == null) return Unauthorized();
 
-        var query = _db.Contacts
-            .Include(c => c.Owner)
-            .AsQueryable();
-
+        var baseQuery = Db.Contacts.AsQueryable();
         if (!user.IsSuperuser)
-            query = query.Where(c => c.OwnerId == user.Id);
+            baseQuery = baseQuery.Where(c => c.OwnerId == user.Id);
 
-        var contacts = await query
+        var contacts = await baseQuery
+            .Include(c => c.Owner)
             .OrderByDescending(c => c.CreatedAt)
             .Skip(skip)
             .Take(limit)
             .ToListAsync();
 
-        var countQuery = _db.Contacts.AsQueryable();
-        if (!user.IsSuperuser)
-            countQuery = countQuery.Where(c => c.OwnerId == user.Id);
-        var count = await countQuery.CountAsync();
+        var count = await baseQuery.CountAsync();
 
         return Ok(new
         {
@@ -57,10 +47,10 @@ public class ContactsController : ControllerBase
         if (user == null) return Unauthorized();
 
         if (string.IsNullOrEmpty(request.Organisation))
-            return BadRequest(new { detail = "Organisation is required" });
+            return BadDetail("Organisation is required");
 
         if (request.Organisation.Length > 255)
-            return BadRequest(new { detail = "Organisation must be 255 characters or less" });
+            return BadDetail("Organisation must be 255 characters or less");
 
         var contact = new Contact
         {
@@ -69,10 +59,10 @@ public class ContactsController : ControllerBase
             OwnerId = user.Id
         };
 
-        _db.Contacts.Add(contact);
-        await _db.SaveChangesAsync();
+        Db.Contacts.Add(contact);
+        await Db.SaveChangesAsync();
 
-        var created = await _db.Contacts
+        var created = await Db.Contacts
             .Include(c => c.Owner)
             .FirstAsync(c => c.Id == contact.Id);
 
@@ -85,15 +75,15 @@ public class ContactsController : ControllerBase
         var user = await GetCurrentUser();
         if (user == null) return Unauthorized();
 
-        var contact = await _db.Contacts
+        var contact = await Db.Contacts
             .Include(c => c.Owner)
             .FirstOrDefaultAsync(c => c.Id == id);
 
         if (contact == null)
-            return NotFound(new { detail = "Contact not found" });
+            return NotFoundDetail("Contact not found");
 
         if (contact.OwnerId != user.Id && !user.IsSuperuser)
-            return StatusCode(403, new { detail = "Not enough permissions" });
+            return ForbidDetail("Not enough permissions");
 
         return Ok(ContactResponse.From(contact));
     }
@@ -104,35 +94,31 @@ public class ContactsController : ControllerBase
         var user = await GetCurrentUser();
         if (user == null) return Unauthorized();
 
-        var contact = await _db.Contacts
+        var contact = await Db.Contacts
             .Include(c => c.Owner)
             .FirstOrDefaultAsync(c => c.Id == id);
 
         if (contact == null)
-            return NotFound(new { detail = "Contact not found" });
+            return NotFoundDetail("Contact not found");
 
         if (contact.OwnerId != user.Id && !user.IsSuperuser)
-            return StatusCode(403, new { detail = "Not enough permissions" });
+            return ForbidDetail("Not enough permissions");
 
         if (request.Organisation != null)
         {
             if (request.Organisation.Length == 0)
-                return BadRequest(new { detail = "Organisation is required" });
+                return BadDetail("Organisation is required");
             if (request.Organisation.Length > 255)
-                return BadRequest(new { detail = "Organisation must be 255 characters or less" });
+                return BadDetail("Organisation must be 255 characters or less");
             contact.Organisation = request.Organisation;
         }
 
         if (request.Description != null)
             contact.Description = request.Description;
 
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var fresh = await _db.Contacts
-            .Include(c => c.Owner)
-            .FirstAsync(c => c.Id == contact.Id);
-
-        return Ok(ContactResponse.From(fresh));
+        return Ok(ContactResponse.From(contact));
     }
 
     [HttpDelete("{id:guid}")]
@@ -141,25 +127,17 @@ public class ContactsController : ControllerBase
         var user = await GetCurrentUser();
         if (user == null) return Unauthorized();
 
-        var contact = await _db.Contacts.FindAsync(id);
+        var contact = await Db.Contacts.FindAsync(id);
         if (contact == null)
-            return NotFound(new { detail = "Contact not found" });
+            return NotFoundDetail("Contact not found");
 
         if (contact.OwnerId != user.Id && !user.IsSuperuser)
-            return StatusCode(403, new { detail = "Not enough permissions" });
+            return ForbidDetail("Not enough permissions");
 
-        _db.Contacts.Remove(contact);
-        await _db.SaveChangesAsync();
+        Db.Contacts.Remove(contact);
+        await Db.SaveChangesAsync();
 
-        return Ok(new { message = "Contact deleted successfully" });
-    }
-
-    private async Task<User?> GetCurrentUser()
-    {
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                     ?? User.FindFirst("sub")?.Value;
-        if (userId == null || !Guid.TryParse(userId, out var id)) return null;
-        return await _db.Users.FindAsync(id);
+        return Ok(new MessageResponse("Contact deleted successfully"));
     }
 }
 

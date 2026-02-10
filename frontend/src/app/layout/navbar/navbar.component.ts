@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatButtonModule } from '@angular/material/button';
@@ -13,7 +13,7 @@ import { AuthStore } from '../../core/state/auth.store';
     <mat-toolbar class="navbar">
       <span class="title">Contact Management</span>
       <span class="spacer"></span>
-      <button mat-button [matMenuTriggerFor]="userMenu" class="user-btn">
+      <button mat-button [matMenuTriggerFor]="userMenu" class="user-btn" aria-label="User menu">
         {{ authStore.user()?.full_name || authStore.user()?.email }}
         <mat-icon>arrow_drop_down</mat-icon>
       </button>
@@ -48,7 +48,8 @@ import { AuthStore } from '../../core/state/auth.store';
       font-size: 13px;
       border-bottom: 1px solid #e2e8f0;
     }
-  `]
+  `],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NavbarComponent {
   authStore = inject(AuthStore);

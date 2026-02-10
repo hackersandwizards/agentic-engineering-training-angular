@@ -1,4 +1,5 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   MAT_DIALOG_DATA,
   MatDialogRef,
@@ -17,8 +18,8 @@ import { UserService } from '../../../core/services/user.service';
   template: `
     <h2 mat-dialog-title>Delete User</h2>
     <mat-dialog-content>
-      @if (error) {
-        <div class="error-banner">{{ error }}</div>
+      @if (error()) {
+        <div class="error-banner">{{ error() }}</div>
       }
       <p>Are you sure you want to delete <strong>{{ user.email }}</strong>?</p>
       <p class="warning">This action cannot be undone.</p>
@@ -29,9 +30,9 @@ import { UserService } from '../../../core/services/user.service';
         mat-raised-button
         color="warn"
         (click)="onConfirm()"
-        [disabled]="submitting"
+        [disabled]="submitting()"
       >
-        {{ submitting ? 'Deleting...' : 'Delete' }}
+        {{ submitting() ? 'Deleting...' : 'Delete' }}
       </button>
     </mat-dialog-actions>
   `,
@@ -44,32 +45,27 @@ import { UserService } from '../../../core/services/user.service';
         color: #c53030;
         font-size: 0.875rem;
       }
-      .error-banner {
-        background: #fed7d7;
-        color: #c53030;
-        padding: 12px;
-        border-radius: 6px;
-        margin-bottom: 16px;
-      }
     `,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DeleteUserDialogComponent {
   readonly dialogRef = inject(MatDialogRef<DeleteUserDialogComponent>);
   readonly user: User = inject(MAT_DIALOG_DATA);
   private userService = inject(UserService);
+  private destroyRef = inject(DestroyRef);
 
-  submitting = false;
-  error = '';
+  submitting = signal(false);
+  error = signal('');
 
   onConfirm(): void {
-    this.submitting = true;
-    this.error = '';
-    this.userService.deleteUser(this.user.id).subscribe({
+    this.submitting.set(true);
+    this.error.set('');
+    this.userService.deleteUser(this.user.id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.dialogRef.close(true),
       error: (err) => {
-        this.error = err.error?.detail || 'Failed to delete user';
-        this.submitting = false;
+        this.error.set(err.error?.detail || 'Failed to delete user');
+        this.submitting.set(false);
       },
     });
   }

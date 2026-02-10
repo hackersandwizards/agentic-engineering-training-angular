@@ -1,4 +1,5 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
   MatDialogRef,
@@ -29,8 +30,8 @@ import { UserService } from '../../../core/services/user.service';
   template: `
     <h2 mat-dialog-title>Create User</h2>
     <mat-dialog-content>
-      @if (error) {
-        <div class="error-banner">{{ error }}</div>
+      @if (error()) {
+        <div class="error-banner">{{ error() }}</div>
       }
       <form [formGroup]="form" (ngSubmit)="onSubmit()">
         <mat-form-field appearance="outline" class="full-width">
@@ -66,9 +67,9 @@ import { UserService } from '../../../core/services/user.service';
         mat-raised-button
         color="primary"
         (click)="onSubmit()"
-        [disabled]="submitting"
+        [disabled]="submitting()"
       >
-        {{ submitting ? 'Creating...' : 'Create' }}
+        {{ submitting() ? 'Creating...' : 'Create' }}
       </button>
     </mat-dialog-actions>
   `,
@@ -83,20 +84,15 @@ import { UserService } from '../../../core/services/user.service';
         gap: 4px;
         min-width: 400px;
       }
-      .error-banner {
-        background: #fed7d7;
-        color: #c53030;
-        padding: 12px;
-        border-radius: 6px;
-        margin-bottom: 16px;
-      }
     `,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AddUserDialogComponent {
   readonly dialogRef = inject(MatDialogRef<AddUserDialogComponent>);
   private fb = inject(FormBuilder);
   private userService = inject(UserService);
+  private destroyRef = inject(DestroyRef);
 
   form = this.fb.nonNullable.group({
     email: ['', [Validators.required, Validators.email]],
@@ -105,24 +101,25 @@ export class AddUserDialogComponent {
     is_superuser: [false],
   });
 
-  submitting = false;
-  error = '';
+  submitting = signal(false);
+  error = signal('');
 
   onSubmit(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
     }
-    this.submitting = true;
-    this.error = '';
+    this.submitting.set(true);
+    this.error.set('');
     const { email, password, full_name, is_superuser } = this.form.getRawValue();
     this.userService
       .createUser({ email, password, full_name: full_name || undefined, is_superuser })
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (user) => this.dialogRef.close(user),
         error: (err) => {
-          this.error = err.error?.detail || 'Failed to create user';
-          this.submitting = false;
+          this.error.set(err.error?.detail || 'Failed to create user');
+          this.submitting.set(false);
         },
       });
   }

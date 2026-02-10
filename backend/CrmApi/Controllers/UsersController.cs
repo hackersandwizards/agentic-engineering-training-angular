@@ -9,14 +9,9 @@ namespace CrmApi.Controllers;
 [ApiController]
 [Route("api/v1")]
 [Authorize]
-public class UsersController : ControllerBase
+public class UsersController : BaseApiController
 {
-    private readonly AppDbContext _db;
-
-    public UsersController(AppDbContext db)
-    {
-        _db = db;
-    }
+    public UsersController(AppDbContext db) : base(db) {}
 
     // --- Current user routes ---
 
@@ -36,18 +31,20 @@ public class UsersController : ControllerBase
 
         if (request.Email != null)
         {
-            if (await _db.Users.AnyAsync(u => u.Email == request.Email && u.Id != user.Id))
-                return BadRequest(new { detail = "A user with this email already exists" });
+            if (!IsValidEmail(request.Email))
+                return BadDetail("Invalid email format");
+
+            if (await Db.Users.AnyAsync(u => u.Email == request.Email && u.Id != user.Id))
+                return BadDetail("A user with this email already exists");
             user.Email = request.Email;
         }
 
         if (request.FullName != null)
             user.FullName = request.FullName;
 
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var fresh = await _db.Users.FindAsync(user.Id);
-        return Ok(UserResponse.From(fresh!));
+        return Ok(UserResponse.From(user));
     }
 
     [HttpPatch("users/me/password")]
@@ -57,21 +54,21 @@ public class UsersController : ControllerBase
         if (user == null) return Unauthorized();
 
         if (string.IsNullOrEmpty(request.CurrentPassword) || string.IsNullOrEmpty(request.NewPassword))
-            return BadRequest(new { detail = "Current password and new password are required" });
+            return BadDetail("Current password and new password are required");
 
         if (request.NewPassword.Length < 8 || request.NewPassword.Length > 40)
-            return BadRequest(new { detail = "Password must be between 8 and 40 characters" });
-
-        if (request.CurrentPassword == request.NewPassword)
-            return BadRequest(new { detail = "New password must be different from current password" });
+            return BadDetail("Password must be between 8 and 40 characters");
 
         if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.Password))
-            return BadRequest(new { detail = "Incorrect password" });
+            return BadDetail("Incorrect password");
+
+        if (request.CurrentPassword == request.NewPassword)
+            return BadDetail("New password must be different from current password");
 
         user.Password = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        return Ok(new { message = "Password updated successfully" });
+        return Ok(new MessageResponse("Password updated successfully"));
     }
 
     [HttpDelete("users/me")]
@@ -81,12 +78,12 @@ public class UsersController : ControllerBase
         if (user == null) return Unauthorized();
 
         if (user.IsSuperuser)
-            return StatusCode(403, new { detail = "Super users are not allowed to delete themselves" });
+            return ForbidDetail("Super users are not allowed to delete themselves");
 
-        _db.Users.Remove(user);
-        await _db.SaveChangesAsync();
+        Db.Users.Remove(user);
+        await Db.SaveChangesAsync();
 
-        return Ok(new { message = "User deleted successfully" });
+        return Ok(new MessageResponse("User deleted successfully"));
     }
 
     // --- Admin routes (superuser only) ---
@@ -97,13 +94,13 @@ public class UsersController : ControllerBase
     {
         limit = Math.Min(limit, 100);
 
-        var users = await _db.Users
+        var users = await Db.Users
             .OrderByDescending(u => u.CreatedAt)
             .Skip(skip)
             .Take(limit)
             .ToListAsync();
 
-        var count = await _db.Users.CountAsync();
+        var count = await Db.Users.CountAsync();
 
         return Ok(new
         {
@@ -117,13 +114,16 @@ public class UsersController : ControllerBase
     public async Task<IActionResult> Store([FromBody] CreateUserRequest request)
     {
         if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
-            return BadRequest(new { detail = "Email and password are required" });
+            return BadDetail("Email and password are required");
+
+        if (!IsValidEmail(request.Email))
+            return BadDetail("Invalid email format");
 
         if (request.Password.Length < 8 || request.Password.Length > 40)
-            return BadRequest(new { detail = "Password must be between 8 and 40 characters" });
+            return BadDetail("Password must be between 8 and 40 characters");
 
-        if (await _db.Users.AnyAsync(u => u.Email == request.Email))
-            return BadRequest(new { detail = "A user with this email already exists" });
+        if (await Db.Users.AnyAsync(u => u.Email == request.Email))
+            return BadDetail("A user with this email already exists");
 
         var user = new User
         {
@@ -134,8 +134,8 @@ public class UsersController : ControllerBase
             IsSuperuser = request.IsSuperuser ?? false
         };
 
-        _db.Users.Add(user);
-        await _db.SaveChangesAsync();
+        Db.Users.Add(user);
+        await Db.SaveChangesAsync();
 
         return StatusCode(201, UserResponse.From(user));
     }
@@ -144,9 +144,9 @@ public class UsersController : ControllerBase
     [Authorize(Policy = "Superuser")]
     public async Task<IActionResult> Show(Guid id)
     {
-        var user = await _db.Users.FindAsync(id);
+        var user = await Db.Users.FindAsync(id);
         if (user == null)
-            return NotFound(new { detail = "User not found" });
+            return NotFoundDetail("User not found");
 
         return Ok(UserResponse.From(user));
     }
@@ -155,21 +155,24 @@ public class UsersController : ControllerBase
     [Authorize(Policy = "Superuser")]
     public async Task<IActionResult> Update(Guid id, [FromBody] AdminUpdateUserRequest request)
     {
-        var user = await _db.Users.FindAsync(id);
+        var user = await Db.Users.FindAsync(id);
         if (user == null)
-            return NotFound(new { detail = "User not found" });
+            return NotFoundDetail("User not found");
 
         if (request.Email != null)
         {
-            if (await _db.Users.AnyAsync(u => u.Email == request.Email && u.Id != user.Id))
-                return BadRequest(new { detail = "A user with this email already exists" });
+            if (!IsValidEmail(request.Email))
+                return BadDetail("Invalid email format");
+
+            if (await Db.Users.AnyAsync(u => u.Email == request.Email && u.Id != user.Id))
+                return BadDetail("A user with this email already exists");
             user.Email = request.Email;
         }
 
         if (!string.IsNullOrEmpty(request.Password))
         {
             if (request.Password.Length < 8 || request.Password.Length > 40)
-                return BadRequest(new { detail = "Password must be between 8 and 40 characters" });
+                return BadDetail("Password must be between 8 and 40 characters");
             user.Password = BCrypt.Net.BCrypt.HashPassword(request.Password);
         }
 
@@ -182,10 +185,9 @@ public class UsersController : ControllerBase
         if (request.IsActive.HasValue)
             user.IsActive = request.IsActive.Value;
 
-        await _db.SaveChangesAsync();
+        await Db.SaveChangesAsync();
 
-        var fresh = await _db.Users.FindAsync(user.Id);
-        return Ok(UserResponse.From(fresh!));
+        return Ok(UserResponse.From(user));
     }
 
     [HttpDelete("users/{id:guid}")]
@@ -196,24 +198,16 @@ public class UsersController : ControllerBase
         if (currentUser == null) return Unauthorized();
 
         if (currentUser.Id == id)
-            return StatusCode(403, new { detail = "Super users are not allowed to delete themselves" });
+            return ForbidDetail("Super users are not allowed to delete themselves");
 
-        var user = await _db.Users.FindAsync(id);
+        var user = await Db.Users.FindAsync(id);
         if (user == null)
-            return NotFound(new { detail = "User not found" });
+            return NotFoundDetail("User not found");
 
-        _db.Users.Remove(user);
-        await _db.SaveChangesAsync();
+        Db.Users.Remove(user);
+        await Db.SaveChangesAsync();
 
-        return Ok(new { message = "User deleted successfully" });
-    }
-
-    private async Task<User?> GetCurrentUser()
-    {
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                     ?? User.FindFirst("sub")?.Value;
-        if (userId == null || !Guid.TryParse(userId, out var id)) return null;
-        return await _db.Users.FindAsync(id);
+        return Ok(new MessageResponse("User deleted successfully"));
     }
 }
 

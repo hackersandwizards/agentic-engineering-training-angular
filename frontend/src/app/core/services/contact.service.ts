@@ -2,11 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Contact } from '../models/contact.model';
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  count: number;
-}
+import { MessageResponse, PaginatedResponse } from '../models/api.model';
 
 @Injectable({ providedIn: 'root' })
 export class ContactService {
@@ -28,7 +24,7 @@ export class ContactService {
     return this.http.patch<Contact>(`/api/v1/contacts/${id}`, data);
   }
 
-  deleteContact(id: string): Observable<any> {
-    return this.http.delete(`/api/v1/contacts/${id}`);
+  deleteContact(id: string): Observable<MessageResponse> {
+    return this.http.delete<MessageResponse>(`/api/v1/contacts/${id}`);
   }
 }

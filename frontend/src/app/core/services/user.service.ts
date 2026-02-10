@@ -2,11 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { User } from '../models/user.model';
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  count: number;
-}
+import { MessageResponse, PaginatedResponse } from '../models/api.model';
 
 @Injectable({ providedIn: 'root' })
 export class UserService {
@@ -20,12 +16,12 @@ export class UserService {
     return this.http.patch<User>('/api/v1/users/me', data);
   }
 
-  updatePassword(data: { current_password: string; new_password: string }): Observable<any> {
-    return this.http.patch('/api/v1/users/me/password', data);
+  updatePassword(data: { current_password: string; new_password: string }): Observable<MessageResponse> {
+    return this.http.patch<MessageResponse>('/api/v1/users/me/password', data);
   }
 
-  deleteMe(): Observable<any> {
-    return this.http.delete('/api/v1/users/me');
+  deleteMe(): Observable<MessageResponse> {
+    return this.http.delete<MessageResponse>('/api/v1/users/me');
   }
 
   getUsers(skip: number, limit: number): Observable<PaginatedResponse<User>> {
@@ -44,7 +40,7 @@ export class UserService {
     return this.http.patch<User>(`/api/v1/users/${id}`, data);
   }
 
-  deleteUser(id: string): Observable<any> {
-    return this.http.delete(`/api/v1/users/${id}`);
+  deleteUser(id: string): Observable<MessageResponse> {
+    return this.http.delete<MessageResponse>(`/api/v1/users/${id}`);
   }
 }

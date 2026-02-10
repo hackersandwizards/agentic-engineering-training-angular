@@ -1,4 +1,5 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -19,6 +20,9 @@ import { ContactService } from '../../../core/services/contact.service';
   template: `
     <h2 mat-dialog-title>Edit Contact</h2>
     <mat-dialog-content>
+      @if (error()) {
+        <div class="error-banner">{{ error() }}</div>
+      }
       <form [formGroup]="form" id="editContactForm" (ngSubmit)="onSubmit()">
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Organisation</mat-label>
@@ -43,9 +47,9 @@ import { ContactService } from '../../../core/services/contact.service';
         color="primary"
         type="submit"
         form="editContactForm"
-        [disabled]="submitting"
+        [disabled]="submitting()"
       >
-        {{ submitting ? 'Saving...' : 'Save' }}
+        {{ submitting() ? 'Saving...' : 'Save' }}
       </button>
     </mat-dialog-actions>
   `,
@@ -56,19 +60,22 @@ import { ContactService } from '../../../core/services/contact.service';
       }
     `,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class EditContactDialogComponent {
   private fb = inject(FormBuilder);
   private dialogRef = inject(MatDialogRef<EditContactDialogComponent>);
   private contactService = inject(ContactService);
   private contact = inject<Contact>(MAT_DIALOG_DATA);
+  private destroyRef = inject(DestroyRef);
 
   form = this.fb.nonNullable.group({
     organisation: [this.contact.organisation, [Validators.required, Validators.maxLength(255)]],
     description: [this.contact.description ?? ''],
   });
 
-  submitting = false;
+  submitting = signal(false);
+  error = signal('');
 
   onSubmit(): void {
     if (this.form.invalid) {
@@ -76,17 +83,22 @@ export class EditContactDialogComponent {
       return;
     }
 
-    this.submitting = true;
+    this.submitting.set(true);
+    this.error.set('');
     const { organisation, description } = this.form.getRawValue();
 
     this.contactService
       .updateContact(this.contact.id, {
         organisation,
-        description: description || undefined,
+        description,
       })
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (contact) => this.dialogRef.close(contact),
-        error: () => (this.submitting = false),
+        error: (err) => {
+          this.error.set(err.error?.detail || 'Failed to update contact');
+          this.submitting.set(false);
+        },
       });
   }
 }

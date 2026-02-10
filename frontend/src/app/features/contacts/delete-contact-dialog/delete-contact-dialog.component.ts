@@ -1,4 +1,5 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { Contact } from '../../../core/models/contact.model';
@@ -19,26 +20,28 @@ import { ContactService } from '../../../core/services/contact.service';
         mat-raised-button
         color="warn"
         (click)="onConfirm()"
-        [disabled]="submitting"
+        [disabled]="submitting()"
       >
-        {{ submitting ? 'Deleting...' : 'Delete' }}
+        {{ submitting() ? 'Deleting...' : 'Delete' }}
       </button>
     </mat-dialog-actions>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DeleteContactDialogComponent {
   private dialogRef = inject(MatDialogRef<DeleteContactDialogComponent>);
   private contactService = inject(ContactService);
   contact = inject<Contact>(MAT_DIALOG_DATA);
+  private destroyRef = inject(DestroyRef);
 
-  submitting = false;
+  submitting = signal(false);
 
   onConfirm(): void {
-    this.submitting = true;
+    this.submitting.set(true);
 
-    this.contactService.deleteContact(this.contact.id).subscribe({
+    this.contactService.deleteContact(this.contact.id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.dialogRef.close(true),
-      error: () => (this.submitting = false),
+      error: () => this.submitting.set(false),
     });
   }
 }

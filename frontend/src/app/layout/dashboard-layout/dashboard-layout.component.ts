@@ -1,4 +1,5 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { NavbarComponent } from '../navbar/navbar.component';
@@ -34,15 +35,17 @@ import { AuthService } from '../../core/services/auth.service';
       padding: 24px;
       background: #f7fafc;
     }
-  `]
+  `],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DashboardLayoutComponent implements OnInit {
   private authStore = inject(AuthStore);
   private authService = inject(AuthService);
+  private destroyRef = inject(DestroyRef);
 
   ngOnInit(): void {
     if (this.authStore.isAuthenticated() && !this.authStore.user()) {
-      this.authService.testToken().subscribe({
+      this.authService.testToken().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
         next: user => this.authStore.setUser(user),
         error: () => this.authStore.clearAuth()
       });

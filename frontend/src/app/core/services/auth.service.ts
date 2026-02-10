@@ -2,12 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { User } from '../models/user.model';
-
-export interface LoginResponse {
-  access_token: string;
-  token_type: string;
-  user: User;
-}
+import { LoginResponse } from '../models/api.model';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
