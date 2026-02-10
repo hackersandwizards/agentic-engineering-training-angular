@@ -1,0 +1,26 @@
+# .NET
+backend/CrmApi/bin/
+backend/CrmApi/obj/
+backend/CrmApi/crm.db
+backend/CrmApi/crm.db-shm
+backend/CrmApi/crm.db-wal
+*.user
+*.suo
+
+# Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# IDEs
+.idea/
+.vscode/
+.fleet/
+.nova/
+.zed/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
